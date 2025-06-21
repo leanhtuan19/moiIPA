@@ -1,38 +1,96 @@
-// Load app data from HTML
+/*
+Designed and developed by Le Anh Tuan
+Facebook: https://www.facebook.com/atusnmoi
+Github: https://github.com/leanhtuan19
+Open Source Project
+*/
 let sampleApps = [];
 
-function loadAndGroupAppsFromHTML() {
-    const appItems = document.querySelectorAll('#appData .app-item');
-    const groupedApps = {};
+async function loadAndProcessAppData() {
+    const jsonUrl = 'https://raw.githubusercontent.com/apptesters-org/AppTesters_Repo/refs/heads/main/apps.json';
+    const groupedApps = {}; // Group apps by bundleIdentifier
 
-    appItems.forEach(item => {
-        const name = item.dataset.name;
-        const versionData = {
-            version: item.dataset.version,
-            size: item.dataset.size,
-            addedDate: new Date(item.dataset.added),
-            downloadLink: item.dataset.downloadLink,
-            description: item.dataset.description
-        };
+    // Helper to format bytes into readable format (KB, MB, GB)
+    function formatSize(bytes) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
 
-        if (groupedApps[name]) {
-            groupedApps[name].versions.push(versionData);
-        } else {
-            groupedApps[name] = {
-                name: name,
-                category: item.dataset.category,
-                icon: item.dataset.icon,
-                description: item.dataset.description, 
-                versions: [versionData]
-            };
+    try {
+        const response = await fetch(jsonUrl);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
-    });
+        const data = await response.json();
+        const appsToProcess = data.apps || [];
 
-    // Convert object to array and sort versions by date (latest first)
-    sampleApps = Object.values(groupedApps).map(app => {
-        app.versions.sort((a, b) => b.addedDate - a.addedDate);
-        return app;
-    });
+        appsToProcess.forEach(item => {
+            const bundleId = item.bundleIdentifier;
+            // A bundleIdentifier is required to correctly group app versions.
+            if (!bundleId) {
+                return; // Skip this item if it's missing a bundleIdentifier.
+            }
+
+            let description = item.localizedDescription || '';
+            if (description.startsWith('Injected with ')) {
+                description = 'Chức năng đã thêm: ' + description.substring('Injected with '.length);
+            }
+
+            // Add 'v' prefix to version if it doesn't already have one.
+            let versionString = item.version;
+            if (versionString && !versionString.toLowerCase().startsWith('v')) {
+                versionString = 'v' + versionString;
+            }
+
+            const versionData = {
+                version: versionString || 'N/A',
+                size: formatSize(item.size),
+                addedDate: new Date(item.versionDate),
+                downloadLink: item.downloadURL,
+                description: description
+            };
+
+            // If this is the first time we see this app, create a new group for it.
+            if (!groupedApps[bundleId]) {
+                const category = item.type === 2 ? 'games' : 'apps';
+                groupedApps[bundleId] = {
+                    name: item.name, // The name might be missing on this version.
+                    bundleId: bundleId,
+                    category: category,
+                    icon: item.iconURL,
+                    description: description, // This will be updated with the latest version's description later.
+                    versions: []
+                };
+            }
+
+            // If the app group exists but doesn't have a name yet, try to get it from the current item.
+            if (!groupedApps[bundleId].name && item.name) {
+                groupedApps[bundleId].name = item.name;
+            }
+
+            // Add the current version's data to its app group.
+            groupedApps[bundleId].versions.push(versionData);
+        });
+
+        // Convert object to array, sort versions by date (latest first), and set latest description
+        sampleApps = Object.values(groupedApps)
+            .filter(app => app.name) // Fulfills: "if it still has no name value, then hide it"
+            .map(app => {
+                // Sort versions by date, with the latest version first.
+                app.versions.sort((a, b) => b.addedDate - a.addedDate);
+                // Use the description from the latest version for the main app card.
+                if (app.versions.length > 0) {
+                    app.description = app.versions[0].description;
+                }
+                return app;
+            });
+    } catch (error) {
+        console.error("Could not fetch or process app data:", error);
+        filesGrid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: white; padding: 40px;"><i class="fas fa-exclamation-triangle" style="font-size: 3rem; opacity: 0.5; margin-bottom: 20px;"></i><p style="font-size: 1.2rem; opacity: 0.8;">Không thể tải dữ liệu ứng dụng.</p><p style="font-size: 1rem; opacity: 0.6; margin-top: 10px;">Vui lòng kiểm tra kết nối mạng và thử lại.</p></div>`;
+    }
 }
 
 // Current active category
@@ -58,17 +116,21 @@ const clearSearch = document.getElementById('clearSearch');
 
 
 // Initialize the application
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     const timeDisplay = document.getElementById('timeDisplay');
     function updateTime() {
         const now = new Date();
         const hours = String(now.getHours()).padStart(2, '0');
         const minutes = String(now.getMinutes()).padStart(2, '0');
         const seconds = String(now.getSeconds()).padStart(2, '0');
-        if(timeDisplay) timeDisplay.textContent = `${hours}:${minutes}:${seconds}`;
+        if (timeDisplay) timeDisplay.textContent = `${hours}:${minutes}:${seconds}`;
+    }
+    if (timeDisplay) {
+        setInterval(updateTime, 1000);
+        updateTime(); // Initial call
     }
 
-    loadAndGroupAppsFromHTML();
+    await loadAndProcessAppData();
     setupEventListeners();
     renderFiles();
 });
@@ -191,6 +253,23 @@ function renderFiles() {
                 app.name && app.name.toLowerCase().includes(searchQuery)
             );
         }
+
+        // Get the count of filtered apps before pagination
+        const currentCategoryCount = filteredApps.length;
+
+        // Update section title with count
+        let categoryIcon, categoryName;
+        if (currentCategory === 'all') {
+            categoryIcon = 'fas fa-th-large';
+            categoryName = 'Tất cả';
+        } else if (currentCategory === 'games') {
+            categoryIcon = 'fas fa-gamepad';
+            categoryName = 'Game';
+        } else { // currentCategory === 'apps'
+            categoryIcon = 'fas fa-mobile-alt';
+            categoryName = 'Ứng dụng';
+        }
+        sectionTitle.innerHTML = `<i class="${categoryIcon}"></i> ${categoryName} (<span id="categoryCount">${currentCategoryCount}</span>)`;
         
         if (filteredApps.length === 0) {
         const categoryMap = {
@@ -297,7 +376,7 @@ function openFileModal(app) {
 
     if (app.versions.length > 1) {
         versionsContainer.style.display = 'block';
-        versionsTitle.innerHTML = `<span class="modal-version-count">${app.versions.length}</span> phiên bản có sẵn:`;
+        versionsTitle.innerHTML = `Gồm <span class="modal-version-count">${app.versions.length}</span> phiên bản có sẵn:`;
         app.versions.forEach((version, index) => {
             const versionElement = document.createElement('div');
             versionElement.className = 'version-item';
@@ -445,34 +524,88 @@ function updatePagination(totalPages) {
     paginationContainer.style.display = 'flex';
     paginationContainer.innerHTML = '';
     
+    // First Page button
+    const firstBtn = document.createElement('button');
+    firstBtn.className = `pagination-btn ${currentPage === 1 ? 'disabled' : ''}`;
+    firstBtn.innerHTML = '<i class="fas fa-angle-double-left"></i>';
+    firstBtn.onclick = () => changePage(1);
+    paginationContainer.appendChild(firstBtn);
+
     // Previous button
     const prevBtn = document.createElement('button');
     prevBtn.className = `pagination-btn ${currentPage === 1 ? 'disabled' : ''}`;
     prevBtn.innerHTML = '<i class="fas fa-chevron-left"></i>';
     prevBtn.onclick = () => changePage(currentPage - 1);
     paginationContainer.appendChild(prevBtn);
-    
+
     // Page numbers
-    for (let i = 1; i <= totalPages; i++) {
+    const pagesOnEachSide = 2; // Reduced to make space for more buttons
+    const pagesToShow = pagesOnEachSide * 2 + 1; // Total 5 pages in the middle
+    let startPage, endPage;
+
+    if (totalPages <= pagesToShow) {
+        startPage = 1;
+        endPage = totalPages;
+    } else {
+        if (currentPage <= pagesOnEachSide + 1) {
+            startPage = 1;
+            endPage = pagesToShow;
+        } else if (currentPage + pagesOnEachSide >= totalPages) {
+            startPage = totalPages - pagesToShow + 1;
+            endPage = totalPages;
+        } else {
+            startPage = currentPage - pagesOnEachSide;
+            endPage = currentPage + pagesOnEachSide;
+        }
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
         const pageBtn = document.createElement('button');
         pageBtn.className = `pagination-btn ${i === currentPage ? 'active' : ''}`;
         pageBtn.textContent = i;
         pageBtn.onclick = () => changePage(i);
         paginationContainer.appendChild(pageBtn);
     }
-    
-    // Next button
+
     const nextBtn = document.createElement('button');
     nextBtn.className = `pagination-btn ${currentPage === totalPages ? 'disabled' : ''}`;
     nextBtn.innerHTML = '<i class="fas fa-chevron-right"></i>';
     nextBtn.onclick = () => changePage(currentPage + 1);
     paginationContainer.appendChild(nextBtn);
     
-    // Page info
-    const pageInfo = document.createElement('div');
-    pageInfo.className = 'page-info';
-    pageInfo.textContent = `Trang ${currentPage} / ${totalPages}`;
-    paginationContainer.appendChild(pageInfo);
+    // Last Page button
+    const lastBtn = document.createElement('button');
+    lastBtn.className = `pagination-btn ${currentPage === totalPages ? 'disabled' : ''}`;
+    lastBtn.innerHTML = '<i class="fas fa-angle-double-right"></i>';
+    lastBtn.onclick = () => changePage(totalPages);
+    paginationContainer.appendChild(lastBtn);
+
+    // Page info input
+    const pageInfoContainer = document.createElement('div');
+    pageInfoContainer.className = 'page-info'; // Re-use the same class for the container
+
+    pageInfoContainer.innerHTML = `
+        <span>Trang </span>
+        <input type="number" class="page-info-input" value="${currentPage}" min="1" max="${totalPages}">
+        <span> / ${totalPages}</span>
+    `;
+    paginationContainer.appendChild(pageInfoContainer);
+
+    const pageInfoInput = pageInfoContainer.querySelector('.page-info-input');
+    pageInfoInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            const page = parseInt(e.target.value, 10);
+            if (!isNaN(page)) {
+                changePage(page);
+            }
+            e.target.blur(); // Bỏ focus khỏi ô input
+        }
+    });
+
+    // Khi người dùng click ra ngoài, reset giá trị về trang hiện tại
+    pageInfoInput.addEventListener('blur', (e) => {
+        e.target.value = currentPage;
+    });
 }
 
 // Change page function
@@ -502,7 +635,6 @@ function switchCategory(category) {
     currentCategory = category;
     resetPagination();
     
-    // Update active tab
     categoryTabs.forEach(tab => {
         tab.classList.remove('active');
         if (tab.dataset.category === category) {
@@ -510,23 +642,19 @@ function switchCategory(category) {
         }
     });
     
-    // Update section title
-    let categoryIcon, categoryName;
-    if (category === 'all') {
-        categoryIcon = 'fas fa-th-large';
-        categoryName = 'Tất cả';
-    } else if (category === 'games') {
-        categoryIcon = 'fas fa-gamepad';
-        categoryName = 'Game';
-    } else {
-        categoryIcon = 'fas fa-mobile-alt';
-        categoryName = 'Ứng dụng';
-    }
-    
-    sectionTitle.innerHTML = `<i class="${categoryIcon}"></i> ${categoryName}`;
-    
     // Re-render files
     renderFiles();
 }
-
+/*
+Designed and developed by Le Anh Tuan
+Facebook: https://www.facebook.com/atusnmoi
+Github: https://github.com/leanhtuan19
+Open Source Project
+*/
 createParticles();
+/*
+Designed and developed by Le Anh Tuan
+Facebook: https://www.facebook.com/atusnmoi
+Github: https://github.com/leanhtuan19
+Open Source Project
+*/

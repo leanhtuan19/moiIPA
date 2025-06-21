@@ -1,3 +1,7 @@
+/* Designed and developed by Le Anh Tuan
+Facebook: https://www.facebook.com/atusnmoi
+Github: https://github.com/leanhtuan19
+Open Source Project */
 :root {
     --primary-color: #bb86fc; /* Màu tím chủ đạo */
     --secondary-color: #03dac6;
@@ -314,6 +318,25 @@ body {
     margin: 0;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+}
+
+#categoryCount {
+    animation: colorCycle 10s linear infinite;
+    font-weight: 700;
+}
+
+@keyframes colorCycle {
+    0%   { color: #ff595e; }
+    10%  { color: #ffca3a; }
+    20%  { color: #8ac926; }
+    30%  { color: #1982c4; }
+    40%  { color: #6a4c93; }
+    50%  { color: #ff924c; }
+    60%  { color: #00d9ff; }
+    70%  { color: #ff28a9; }
+    80%  { color: #a0eade; }
+    90%  { color: #f9c80e; }
+    100% { color: #ff595e; }
 }
 
 .files-grid {
@@ -870,6 +893,39 @@ body {
     background: rgba(118, 118, 128, 0.12);
     border-radius: 8px;
     backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.page-info-input {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: white;
+    font-weight: 600;
+    width: 50px;
+    text-align: center;
+    font-size: 0.9rem;
+    outline: none;
+    padding: 4px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+.page-info-input:focus {
+    background: rgba(0, 0, 0, 0.4);
+    border-color: #007AFF;
+}
+
+/* Hide number input spinners */
+.page-info-input::-webkit-outer-spin-button,
+.page-info-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.page-info-input[type=number] {
+    -moz-appearance: textfield;
 }
 
 /* Footer */
@@ -939,3 +995,7 @@ body {
         max-width: 100%;
     }
 }
+/* Designed and developed by Le Anh Tuan
+Facebook: https://www.facebook.com/atusnmoi
+Github: https://github.com/leanhtuan19
+Open Source Project */
